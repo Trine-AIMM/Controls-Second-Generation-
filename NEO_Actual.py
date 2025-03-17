@@ -15,7 +15,7 @@ def set_duty(pulse_width_us):
     period_us = 5000  # 200 Hz = 1/200 = 5ms period = 5000µs
     duty = int((pulse_width_us / period_us) * 65535)  # Scale to 16-bit duty cycle
     pwm.duty_u16(duty)
-
+    
 def drop():
     print("Executing drop() function...")
     set_duty(1420)  
@@ -43,19 +43,21 @@ def pullUp():
     set_duty(0)
 
 
-# Main loop
 while True:
     t_pin_status = trigger_pin.value()
     
-    if exit_pin.value() == 1:  # Exit if Pin 1 goes HIGH
-        print("Exit signal received (Pin 1 HIGH), exiting loop.")
-        break
-    
     if t_pin_status == 1:  # Check if pin is HIGH
-        print("Trigger detected! Running drop() and pullUp() functions.")
+        print("Trigger detected! Running drop() and hold() functions.")
         drop()
         hold()
         sleep(3)
+        
+        # Wait for the trigger pin to go LOW before executing pullUp()
+        print("Waiting for trigger pin to go LOW before executing pullUp()...")
+        while trigger_pin.value() == 1:
+            sleep(0.1)  # Small delay to avoid excessive looping
+
+        print("Trigger pin is LOW, executing pullUp()")
         pullUp()
         sleep(2)
     else:
