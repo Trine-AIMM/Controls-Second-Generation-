@@ -1,9 +1,10 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
-uint8_t neoAddress[] = {0x48, 0x27, 0xE2, 0xFD, 0x67, 0x14};
+uint8_t neoAddress[] = {0x74, 0x4D, 0xBD, 0x7D, 0x26, 0xA4};
 uint8_t gripperAddress[] = {0x48, 0x27, 0xE2, 0xFD, 0x7C, 0x08};
 uint8_t tempSensorAddress[] = {0x34, 0x85, 0x18, 0x7B, 0x22, 0x38};
+uint8_t payloadReleaseAddress[] = {0xDC, 0xDA, 0x0C, 0x21, 0x61, 0x44};
 
 int data = 0;
 int tempData;
@@ -31,6 +32,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
  
   if (esp_now_init() != ESP_OK) {
+    
     Serial.println("Error initializing ESP-NOW");
     return;
   }
@@ -61,13 +63,20 @@ void setup() {
     Serial.println("Failed to add peer");
     return;
   }
+  // register payload release peer  
+  memcpy(peerInfo.peer_addr, payloadReleaseAddress, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
+  }
 }
  
 void loop() {
   Serial.println("Select an Option");
-  Serial.println("1.) Drop the net");
+  Serial.println("1.) Deploy the net (Enter -1 to raise it back up)");
   Serial.println("2.) Drop the sensor");
-  Serial.println("3.) Read temperature data (Enter -1 to stop reading data)");
+  Serial.println("3.) Read temperature data (Enter -3 to stop reading data)");
+  Serial.println("4.) Drop the football");
 
   while (Serial.available() == 0) {
     // Wait for input
