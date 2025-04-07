@@ -1,0 +1,117 @@
+#include <Bluepad32.h>
+#include <esp_now.h>
+#include <WiFi.h>
+
+// Define the MAC address of the receiving ESP-NOW device
+uint8_t masterAddress[] = {0xDC, 0xDA, 0x0C, 0x21, 0x5D, 0x4C}; // Replace with the receiver's actual MAC address
+
+ControllerPtr myControllers[BP32_MAX_GAMEPADS];
+int controllerData[5]; // Array to store button and axis values
+
+// Callback function when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    Serial.print("Packet sent to: ");
+    for (int i = 0; i < 6; i++) {
+        Serial.printf("%02X", mac_addr[i]);
+        if (i < 5) Serial.print(":");
+    }
+    Serial.print(" Send Status: ");
+    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
+}
+
+// Function to register a peer
+void addPeer(uint8_t *peerAddress) {
+    esp_now_peer_info_t peerInfo = {};
+    memcpy(peerInfo.peer_addr, peerAddress, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+        Serial.println("Failed to add peer");
+    }
+}
+
+// Send controller data via ESP-NOW
+void sendControllerData() {
+    esp_err_t result = esp_now_send(masterAddress, (uint8_t *) &controllerData, sizeof(controllerData));
+    if (result == ESP_OK) {
+        Serial.println("Sent controller data successfully");
+    } else {
+        Serial.println("Failed to send controller data");
+    }
+}
+
+// Callback when a new controller is connected
+void onConnectedController(ControllerPtr ctl) {
+    for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
+        if (myControllers[i] == nullptr) {
+            Serial.printf("Controller connected at index=%d\n", i);
+            myControllers[i] = ctl;
+            return;
+        }
+    }
+    Serial.println("No empty slot for new controller");
+}
+
+// Callback when a controller is disconnected
+void onDisconnectedController(ControllerPtr ctl) {
+    for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
+        if (myControllers[i] == ctl) {
+            Serial.printf("Controller disconnected from index=%d\n", i);
+            myControllers[i] = nullptr;
+            return;
+        }
+    }
+    Serial.println("Disconnected controller not found");
+}
+
+// Process gamepad input
+void processGamepad(ControllerPtr ctl) {
+    controllerData[0] = ctl->buttons();
+    controllerData[1] = ctl->axisX();
+    controllerData[2] = ctl->axisY();
+    controllerData[3] = ctl->axisRX();
+    controllerData[4] = ctl->axisRY();
+
+    Serial.printf("Button: %d, L-Stick: (%d, %d), R-Stick: (%d, %d)\n",
+        controllerData[0], controllerData[1], controllerData[2], controllerData[3], controllerData[4]);
+
+    sendControllerData(); // Send data via ESP-NOW
+}
+
+// Process connected controllers
+void processControllers() {
+    for (auto myController : myControllers) {
+        if (myController && myController->isConnected() && myController->hasData()) {
+            if (myController->isGamepad()) {
+                processGamepad(myController);
+            }
+        }
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    WiFi.mode(WIFI_STA);
+
+    // Initialize ESP-NOW
+    if (esp_now_init() != ESP_OK) {
+        Serial.println("Error initializing ESP-NOW");
+        return;
+    }
+    esp_now_register_send_cb(OnDataSent);
+    addPeer(masterAddress);
+
+    // Initialize Bluepad32
+    Serial.printf("Firmware: %s\n", BP32.firmwareVersion());
+    BP32.setup(&onConnectedController, &onDisconnectedController);
+    BP32.forgetBluetoothKeys();
+}
+
+void loop() {
+    bool dataUpdated = BP32.update();
+    if (dataUpdated) {
+        processControllers();
+    }
+    delay(150);
+}
